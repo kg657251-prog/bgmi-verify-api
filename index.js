@@ -24,85 +24,15 @@ app.post('/api/verify', async (req, res) => {
     try {
         console.log(`Verifying Player ID: ${trimmedId}`);
 
-        // Step 1: Get authorization token from rooter.gg
-        const tokenResponse = await fetch("https://www.rooter.gg/", {
-            method: "GET",
-            headers: {
-                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-                "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-            },
-            redirect: "follow",
-        });
-
-        // Extract user_auth cookie
-        let userAuthCookieValue = "";
-
-        // Try getSetCookie() (Node 20+)
-        try {
-            const setCookies = tokenResponse.headers.getSetCookie?.();
-            if (setCookies && Array.isArray(setCookies) && setCookies.length > 0) {
-                for (const cookieStr of setCookies) {
-                    const match = cookieStr.match(/^user_auth=([^;]+)/);
-                    if (match) {
-                        userAuthCookieValue = match[1];
-                        break;
-                    }
-                }
-            }
-        } catch (e) {
-            console.log("getSetCookie() not available, falling back");
-        }
-
-        // Fallback: extract from raw set-cookie header
-        if (!userAuthCookieValue) {
-            const rawCookie = tokenResponse.headers.get('set-cookie') || '';
-            const authMatch = rawCookie.match(/user_auth=([^;]+)/);
-            if (authMatch) {
-                userAuthCookieValue = authMatch[1];
-            }
-        }
-
-        if (!userAuthCookieValue) {
-            console.error("No user_auth cookie found");
-            return res.status(502).json({
-                success: false,
-                error: "Verification service temporarily unavailable (Cloudflare Block). Please try again."
-            });
-        }
-
-        // Decode the cookie to extract accessToken
-        let accessToken = "";
-        try {
-            const decoded = decodeURIComponent(userAuthCookieValue);
-            const parsed = JSON.parse(decoded);
-            accessToken = parsed.accessToken || "";
-        } catch (e) {
-            console.error("Failed to parse user_auth cookie.");
-            return res.status(502).json({
-                success: false,
-                error: "Verification service temporarily unavailable."
-            });
-        }
-
-        if (!accessToken) {
-            return res.status(502).json({
-                success: false,
-                error: "Verification service temporarily unavailable."
-            });
-        }
-
-        // Step 2: Query the BGMI username API
-        const apiUrl = `https://bazaar.rooter.io/order/getUnipinUsername?gameCode=BGMI_IN&id=${trimmedId}`;
+        // Call the RapidAPI BGMI endpoint
+        const apiUrl = `https://id-game-checker.p.rapidapi.com/bgmi/${trimmedId}`;
 
         const apiResponse = await fetch(apiUrl, {
             method: "GET",
             headers: {
-                "Authorization": `Bearer ${accessToken}`,
-                "Device-Type": "web",
-                "App-Version": "1.0.0",
-                "Device-Id": "web-verifier",
-                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-                "Accept": "application/json",
+                "x-rapidapi-host": "id-game-checker.p.rapidapi.com",
+                "x-rapidapi-key": "b9172a8c93msh580d2723f591e4bp1b75a7jsnbe815744d293",
+                "Content-Type": "application/json"
             },
         });
 
@@ -118,16 +48,16 @@ app.post('/api/verify', async (req, res) => {
             });
         }
 
-        if (data.transaction === "SUCCESS" && data.unipinRes?.username) {
+        if (data.status === 200 && data.data?.username) {
             return res.status(200).json({
                 success: true,
-                name: data.unipinRes.username,
+                name: data.data.username,
                 message: "ID Verified"
             });
         } else {
             return res.status(404).json({
                 success: false,
-                error: data.message || "Player not found. Please check your BGMI UID."
+                error: "Player not found. Please check your BGMI UID."
             });
         }
 
